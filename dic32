@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""
+dic32 - Data Integrity Checker
+Stores the CRC32 of inodes in an Sqlite3 database
+Written by Sean B. Palmer
+
+"How many bits on your disk are corrupted and were propagated to your backups?
+You have no way to know. We've had the solution for decades." (@garybernhardt)
+
+NO WARRANTY, NO GUARANTEES
+
+$ dic update ~/.dic.sqlite3 ~/
+"""
+
+import os
+import sqlite3
+import struct
+import sys
+import time
+import zlib
+
+def error(message):
+    print("Error:", message, file=sys.stderr)
+    sys.exit(1)
+
+def warning(message):
+    print("Warning:", message, file=sys.stderr)
+
+class PersistentDictionary(object):
+    def __init__(self, filename, *, journal_mode="DELETE"): 
+        schema = "(key BLOB PRIMARY KEY, value BLOB)"
+        self.connection = sqlite3.connect(filename)
+        self.connection.execute("PRAGMA journal_mode = %s" % journal_mode)
+        self.connection.execute("CREATE TABLE IF NOT EXISTS dict " + schema)
+        self.connection.commit()
+
+    def select_one(self, query, arg=None):
+        try: return next(iter(self.connection.execute(query, arg)))
+        except StopIteration:
+            return None
+
+    def commit(self):
+        if self.connection is not None:
+            self.connection.commit()
+
+    def close(self):
+        if self.connection is not None:
+            self.connection.close()
+            self.connection = None
+
+    def __contains__(self, key):
+        query = "SELECT 1 from dict where key = ?"
+        return self.select_one(query, (key,))
+
+    def __getitem__(self, key):
+        query = "SELECT value FROM dict WHERE key = ?"
+        item = self.select_one(query, (key,))
+        if item is None:
+            raise KeyError(key)
+        return item[0]
+
+    def __setitem__(self, key, value):
+        query = "REPLACE INTO dict (key, value) VALUES (?, ?)"
+        self.connection.execute(query, (key, value))
+
+    def __delitem__(self, key):
+        if key not in self:
+            raise KeyError(key)
+        query = "DELETE FROM dict WHERE key = ?"
+        self.connection.execute(query, (key,))
+
+    def keys(self):
+        query = "SELECT key FROM dict ORDER BY rowid"
+        return [key[0] for key in self.connection.execute(query)]
+
+def walk(directory):
+    for root, _, files in os.walk(directory):
+        for name in files:
+            yield os.path.join(root, name)
+
+def crc32(path):
+    with open(path, "rb") as f:
+        checksum = 0
+        while True:
+            octets = f.read(33554432) # 32 MB
+            if not octets:
+                break
+            checksum = zlib.crc32(octets, checksum)
+    return checksum
+
+def pack(integer):
+    return struct.pack(">I", integer)
+
+def mtime(path):
+    return int(os.path.getmtime(path))
+
+def dic_path(db, path, update, force, cache, log):
+    stat = os.stat(path)
+    inode = pack(stat.st_ino)
+    modified = pack(mtime(path))
+
+    if inode in db:
+        log["R"].discard(inode)
+        metadata = db[inode]
+        if metadata.startswith(modified):
+            checksum = pack(crc32(path))
+            if not metadata.endswith(checksum):
+                if update and force:
+                    cache[inode] = modified + checksum
+                log["M"].append(path)
+        elif update:
+            checksum = pack(crc32(path))
+            cache[inode] = modified + checksum
+    elif update:
+        checksum = pack(crc32(path))
+        cache[inode] = modified + checksum
+    return stat.st_size
+
+def dic(filename, directory, *, update=False, force=False, verbose=False):
+    db = PersistentDictionary(filename)
+    log = {"M": [], "U": 0, "R": set(db.keys()), "X": []}
+    cache = {}
+
+    def sync(db, cache):
+        for key in cache:
+            db[key] = cache[key]
+        log["U"] += len(cache)
+        db.commit()
+        cache.clear()
+
+    processed = 0
+    total = 0
+    status = "\rProcessed %s files, %s MB"
+    started = time.time()
+    for path in walk(directory):
+        args = (db, path, update, force, cache, log)
+        try: size = dic_path(*args)
+        except (FileNotFoundError, PermissionError):
+            log["X"].append(path)
+            continue
+
+        processed += 1
+        total += size
+        if not (processed % 10):
+            sys.stderr.write(status % (processed, int(total / 1000000)))
+
+        if update and (len(cache) > 8192):
+            sync(db, cache)
+
+    status += " in %s seconds" % round(time.time() - started, 2)
+    sys.stderr.write(status % (processed, int(total / 1000000)))
+
+    if update and log["R"]:
+        for key in log["R"]:
+            del db[key]
+        db.commit()
+
+    if update and cache:
+        sync(db, cache)
+
+    print("")
+    results = [(len(log["M"]), "Mismatched")]
+    if update:
+        results.append((log["U"], "Updated"))
+        results.append((len(log["R"]), "Removed"))
+    if log["X"]:
+        results.append((len(log["X"]), "Unreadable"))
+    print(", ".join("%s %s" % pair for pair in results))
+
+    for m in log["M"]:
+        print("M", m)
+    if verbose:
+        for r in log["R"]:
+            print("R", r)
+        for x in log["X"]:
+            print("X", x)
+    db.close()
+
+def main(argv=None):
+    argv = sys.argv if (argv is None) else argv
+    if len(argv) != 4:
+        error("Usage: dic ( check | update | force ) FILENAME DIRECTORY")
+
+    action = argv[1]
+    filename = argv[2]
+    directory = argv[3]
+    if action not in {"check", "update", "force"}:
+        error("Action must be check, update, or force")
+
+    verbose = "DIC_VERBOSE" in os.environ
+
+    if not os.path.isdir(directory):
+        error("Not a directory: %s" % directory)
+
+    if action == "check":
+        if not os.path.isfile(filename):
+            error("Database does not exist: %s" % filename)
+        dic(filename, directory, update=False, verbose=verbose)
+
+    elif action == "update":
+        dic(filename, directory, update=True, verbose=verbose)
+
+    elif action == "force":
+        dic(filename, directory, update=True, force=True, verbose=verbose)
+
+    else:
+        error("Please report this bug")
+
+if __name__ == "__main__":
+    main()
