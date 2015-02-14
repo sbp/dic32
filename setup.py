@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 
-import distutils.core
 import os.path
 import sys
+
+try: from setuptools import setup
+except ImportError as err:
+    if "bdist_wheel" in sys.argv:
+        print("bdist_wheel requires setuptools")
+        sys.exit(1)
+    from distutils.core import setup
 
 def generate_version(epoch, recent):
     elapsed = recent - epoch
@@ -21,7 +27,7 @@ if __name__ == "__main__":
         print("Unable to find dic32 script: refusing to install")
         sys.exit(1)
 
-    distutils.core.setup(
+    setup(
         name="dic32",
         version=version,
         author="Sean B. Palmer",

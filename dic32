@@ -9,7 +9,7 @@ You have no way to know. We've had the solution for decades." (@garybernhardt)
 
 NO WARRANTY, NO GUARANTEES
 
-$ dic update ~/.dic.sqlite3 ~/
+$ dic32 update ~/.dic32.sqlite3 ~/
 """
 
 import os
@@ -94,7 +94,7 @@ def pack(integer):
 def mtime(path):
     return int(os.path.getmtime(path))
 
-def dic_path(db, path, update, force, cache, log):
+def dic32_path(db, path, update, force, cache, log):
     stat = os.stat(path)
     inode = pack(stat.st_ino)
     modified = pack(mtime(path))
@@ -116,7 +116,7 @@ def dic_path(db, path, update, force, cache, log):
         cache[inode] = modified + checksum
     return stat.st_size
 
-def dic(filename, directory, *, update=False, force=False, verbose=False):
+def dic32(filename, directory, *, update=False, force=False, verbose=False):
     db = PersistentDictionary(filename)
     log = {"M": [], "U": 0, "R": set(db.keys()), "X": []}
     cache = {}
@@ -134,7 +134,7 @@ def dic(filename, directory, *, update=False, force=False, verbose=False):
     started = time.time()
     for path in walk(directory):
         args = (db, path, update, force, cache, log)
-        try: size = dic_path(*args)
+        try: size = dic32_path(*args)
         except (FileNotFoundError, PermissionError):
             log["X"].append(path)
             continue
@@ -179,7 +179,7 @@ def dic(filename, directory, *, update=False, force=False, verbose=False):
 def main(argv=None):
     argv = sys.argv if (argv is None) else argv
     if len(argv) != 4:
-        error("Usage: dic ( check | update | force ) FILENAME DIRECTORY")
+        error("Usage: dic32 ( check | update | force ) FILENAME DIRECTORY")
 
     action = argv[1]
     filename = argv[2]
@@ -187,7 +187,7 @@ def main(argv=None):
     if action not in {"check", "update", "force"}:
         error("Action must be check, update, or force")
 
-    verbose = "DIC_VERBOSE" in os.environ
+    verbose = "DIC32_VERBOSE" in os.environ
 
     if not os.path.isdir(directory):
         error("Not a directory: %s" % directory)
@@ -195,13 +195,13 @@ def main(argv=None):
     if action == "check":
         if not os.path.isfile(filename):
             error("Database does not exist: %s" % filename)
-        dic(filename, directory, update=False, verbose=verbose)
+        dic32(filename, directory, update=False, verbose=verbose)
 
     elif action == "update":
-        dic(filename, directory, update=True, verbose=verbose)
+        dic32(filename, directory, update=True, verbose=verbose)
 
     elif action == "force":
-        dic(filename, directory, update=True, force=True, verbose=verbose)
+        dic32(filename, directory, update=True, force=True, verbose=verbose)
 
     else:
         error("Please report this bug")
