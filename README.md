@@ -15,3 +15,21 @@ dic32 update ~/.dic32.sqlite3 ~/
 ## Caution
 
 `dic32` comes with NO WARRANTY, and is untested. You must understand how it works to properly assess what manner of protection it provides. For example, inodes are unique to a volume, so you can't use `dic32` on a backup using a master database file. You'd have to create a new database for the backup.
+
+## Installation
+
+Either download this repository and use the `dic32` script as is:
+
+```sh
+git clone https://github.com/sbp/dic32
+```
+
+Or use pip3 to install:
+
+```sh
+pip3 install dic32
+```
+
+## Requirements
+
+`dic32` requires Python 3, with the `sqlite3` module included. Some builds of Python 3 may not include `sqlite3` by default. There is no plan for Python 2 compatibility.
