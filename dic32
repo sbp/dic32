@@ -23,9 +23,6 @@ def error(message):
     print("Error:", message, file=sys.stderr)
     sys.exit(1)
 
-def warning(message):
-    print("Warning:", message, file=sys.stderr)
-
 class PersistentDictionary(object):
     def __init__(self, filename, *, journal_mode="DELETE"): 
         schema = "(key BLOB PRIMARY KEY, value BLOB)"
@@ -91,13 +88,10 @@ def crc32(path):
 def pack(integer):
     return struct.pack(">I", integer)
 
-def mtime(path):
-    return int(os.path.getmtime(path))
-
 def dic32_path(db, path, update, force, cache, log):
     stat = os.stat(path)
     inode = pack(stat.st_ino)
-    modified = pack(mtime(path))
+    modified = pack(int(os.path.getmtime(path)))
 
     if inode in db:
         log["R"].discard(inode)
