@@ -1,4 +1,4 @@
-# Disk integrity checker
+# Data integrity checker
 
 > Maps [inodes](https://en.wikipedia.org/wiki/Inode) to file [mtime](https://en.wikipedia.org/wiki/Stat_%28system_call%29) and [CRC32](https://en.wikipedia.org/wiki/Cyclic_redundancy_check) in an [Sqlite3](https://en.wikipedia.org/wiki/SQLite) database
 
@@ -11,3 +11,7 @@ To store the checksums of your home directory:
 ```sh
 dic32 update ~/.dic32.sqlite3 ~/
 ```
+
+## Caution
+
+`dic32` comes with NO WARRANTY, and is untested. You must understand how it works to properly assess what manner of protection it provides. For example, inodes are unique to a volume, so you can't use `dic32` on a backup using a master database file. You'd have to create a new database for the backup.

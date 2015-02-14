@@ -136,13 +136,13 @@ def dic32(filename, directory, *, update=False, force=False, verbose=False):
         processed += 1
         total += size
         if not (processed % 10):
-            sys.stderr.write(status % (processed, int(total / 1000000)))
+            sys.stderr.write(status % (processed, total // 1000000))
 
         if update and (len(cache) > 8192):
             sync(db, cache)
 
     status += " in %s seconds" % round(time.time() - started, 2)
-    sys.stderr.write(status % (processed, int(total / 1000000)))
+    sys.stderr.write(status % (processed, total // 1000000))
 
     if update and log["R"]:
         for key in log["R"]:
